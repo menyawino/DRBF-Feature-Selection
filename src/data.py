@@ -16,95 +16,71 @@ from sklearn import preprocessing
 from sklearn.feature_selection import VarianceThreshold, SelectKBest, f_classif
 from sklearn import svm
 from scipy import stats
-from geofetch import Geofetcher
+from geofetch import get_dataset
 
-import re
-from pathlib import Path
 
 def load_asd_data(dataset_id='GSE25507', force_reload=False):
     """
-    Load ASD gene expression data from GEO database with sanitization.
+    Load ASD gene expression data from GEO database.
+    
+    Parameters:
+    -----------
+    dataset_id : str
+        GEO dataset accession number
+    force_reload : bool
+        If True, reload the dataset even if it's already been processed
+        
+    Returns:
+    --------
+    dict
+        Dictionary containing the processed data:
+        - X: gene expression matrix (samples x genes)
+        - y: class labels (1 for ASD, 0 for control)
+        - gene_names: list of gene names
+        - sample_info: sample metadata
     """
     processed_path = f'./data/processed/{dataset_id}_processed.pkl'
     
+    # Check if processed data already exists
     if os.path.exists(processed_path) and not force_reload:
         print(f"Loading preprocessed data from {processed_path}")
         with open(processed_path, 'rb') as f:
             return pickle.load(f)
     
     print(f"Fetching dataset {dataset_id} from GEO...")
+    # Get dataset from GEO
+    dset = get_dataset(dataset_id, destdir='./data/raw')
     
-    try:
-        # Initialize Geofetcher with sanitization
-        geofetcher = Geofetcher(
-            processed=True,
-            just_metadata=False,
-            destdir='./data/raw',
-            skip_soft_parsing_errors=True
-        )
-        
-        # First pass to download data
-        projects = geofetcher.get_projects(dataset_id)
-        
-        # Clean downloaded files
-        raw_dir = Path(f'./data/raw/{dataset_id}')
-        for soft_file in raw_dir.glob('*.soft'):
-            with open(soft_file, 'r+', encoding='utf-8', errors='replace') as f:
-                content = f.read()
-                # Remove control characters and invalid Unicode
-                cleaned = re.sub(r'[\x00-\x1F\x7F-\x9F]', '', content)
-                f.seek(0)
-                f.write(cleaned)
-                f.truncate()
-        
-        # Reload cleaned data
-        projects = geofetcher.get_projects(dataset_id)
-        project = projects[dataset_id] if isinstance(projects, dict) else projects[0]
-        
-        # Validate data structure
-        if not hasattr(project, 'sample_table'):
-            raise AttributeError("Project object missing required 'sample_table' attribute")
-            
-        sample_table = project.sample_table
-        expr = sample_table.set_index('sample_name')
-        meta = sample_table
-
-        # Find label column with fallbacks
-        label_col = next((col for col in meta.columns 
-                         if any(kw in col.lower() for kw in ['diagnosis', 'group', 'condition'])), 
-                        meta.columns[0])
-        
-        # Filter samples
-        mask = meta[label_col].str.contains('autism|control', case=False, na=False, regex=True)
-        if mask.sum() == 0:
-            raise ValueError("No ASD/control samples found in metadata")
-            
-        X = expr[mask].values.astype(np.float32)
-        y = np.where(meta[mask][label_col].str.contains('autism', case=False), 1, 0)
-        
-        # Feature selection
-        gene_names = expr.columns.tolist()
-        selector = VarianceThreshold(threshold=0.1)
-        X = selector.fit_transform(X)
-        kept_genes = selector.get_feature_names_out(input_features=gene_names)
-        
-        # Normalization
-        X = preprocessing.StandardScaler().fit_transform(X)
-        
-        # Save results
-        result = {'X': X, 'y': y, 'gene_names': kept_genes, 'sample_info': meta[mask]}
-        with open(processed_path, 'wb') as f:
-            pickle.dump(result, f)
-            
-        print(f"Successfully processed {X.shape[0]} samples with {X.shape[1]} features")
-        return result
-
-    except Exception as e:
-        print(f"Error processing dataset {dataset_id}: {str(e)}")
-        if os.path.exists(processed_path):
-            os.remove(processed_path)
-        raise
-
+    # Process expression matrix
+    expr = dset.expression_data.T  # Genes as columns
+    meta = dset.phenotype_data
+    
+    # Filter ASD vs controls
+    mask = meta['characteristics_ch1'].str.contains('autism|control', case=False)
+    X = expr[mask].values
+    y = np.where(meta[mask]['characteristics_ch1'].str.contains('autism', case=False), 1, 0)
+    sample_info = meta[mask].copy()
+    gene_names = expr.columns.tolist()
+    
+    # Remove low variance features
+    print(f"Original feature count: {X.shape[1]}")
+    selector = VarianceThreshold(threshold=0.1)
+    X = selector.fit_transform(X)
+    kept_genes = selector.get_feature_names_out(input_features=gene_names) if hasattr(selector, 'get_feature_names_out') else np.array(gene_names)[selector.get_support()]
+    print(f"Features after variance filtering: {X.shape[1]}")
+    
+    # Normalize data
+    X = preprocessing.StandardScaler().fit_transform(X)
+    
+    # Save processed data
+    result = {'X': X, 'y': y, 'gene_names': kept_genes, 'sample_info': sample_info}
+    with open(processed_path, 'wb') as f:
+        pickle.dump(result, f)
+    
+    print(f"Data processed and saved to {processed_path}")
+    print(f"Dataset shape: {X.shape}, Positive cases: {sum(y)}, Negative cases: {len(y) - sum(y)}")
+    
+    return result
 
 
 def select_features(X, y, gene_names, method='anova', n_features=100):

@@ -137,3 +137,20 @@ The project generates several visualizations to help interpret the results:
 - scipy
 - geofetch (for GEO dataset retrieval)
 
+## License
+
+[MIT License]
+
+## Citation
+
+If you use this work in your research, please cite:
+
+```
+@software{double_rbf_kernel,
+  author = {[Author Name]},
+  title = {Double RBF Kernel for ASD Classification},
+  url = {[repository-url]},
+  version = {0.1.0},
+  year = {2025},
+}
+```
