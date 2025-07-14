@@ -1,0 +1,8 @@
+2025-07-14 13:49:21,869 - __main__ - INFO - Loading dataset GSE15402
+2025-07-14 13:49:21,871 - __main__ - INFO - Performing feature selection using anova method
+2025-07-14 13:49:21,876 - __main__ - INFO - Selected 100 features
+2025-07-14 13:49:21,876 - __main__ - INFO - Generating t-SNE visualization of selected features
+2025-07-14 13:49:24,384 - __main__ - INFO - Training final model with double_rbf kernel
+2025-07-14 13:49:24,405 - __main__ - INFO - Final model saved to ./models/best_model_20250714_134924.pkl
+2025-07-14 13:49:24,405 - __main__ - INFO - Benchmarking against other kernel types
+2025-07-14 13:49:26,703 - __main__ - INFO - Pipeline completed successfully

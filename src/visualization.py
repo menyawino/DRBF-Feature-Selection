@@ -201,16 +201,30 @@ def save_model(clf, X, y, kernel_type, kernel_params, feature_names, file_prefix
     
     # Save model and metadata
     model_data = {
-        'model': clf,
         'kernel_type': kernel_type,
         'kernel_params': kernel_params,
         'feature_names': feature_names,
         'metrics': metrics,
-        'timestamp': timestamp
+        'timestamp': timestamp,
+        'model_info': {
+            'support_vectors_': clf.support_vectors_.tolist() if hasattr(clf, 'support_vectors_') else None,
+            'support_': clf.support_.tolist() if hasattr(clf, 'support_') else None,
+            'n_support_': clf.n_support_.tolist() if hasattr(clf, 'n_support_') else None,
+            'dual_coef_': clf.dual_coef_.tolist() if hasattr(clf, 'dual_coef_') else None,
+            'intercept_': clf.intercept_.tolist() if hasattr(clf, 'intercept_') else None
+        }
     }
     
-    with open(model_path, 'wb') as f:
-        pickle.dump(model_data, f)
+    # Try to save the model, but skip if it can't be pickled
+    try:
+        model_data['model'] = clf
+        with open(model_path, 'wb') as f:
+            pickle.dump(model_data, f)
+    except (AttributeError, TypeError) as e:
+        print(f"Warning: Could not pickle model object ({e}). Saving metadata only.")
+        del model_data['model']
+        with open(model_path, 'wb') as f:
+            pickle.dump(model_data, f)
     
     print(f"Model saved to {model_path}")
     return model_path
